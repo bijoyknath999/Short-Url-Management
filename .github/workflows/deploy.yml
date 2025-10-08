@@ -24,7 +24,11 @@ jobs:
         
     - name: Validate PHP syntax
       run: |
-        find . -name "*.php" -exec php -l {} \; | grep -v "No syntax errors"
+        echo "Validating PHP syntax..."
+        find . -name "*.php" -not -path "./vendor/*" | while read file; do
+          php -l "$file" || exit 1
+        done
+        echo "All PHP files are valid!"
         
     - name: Deploy to cPanel
       uses: SamKirkland/FTP-Deploy-Action@4.3.3
