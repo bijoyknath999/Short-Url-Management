@@ -1,0 +1,68 @@
+name: PHP Tests
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        php-version: ['7.4', '8.0', '8.1', '8.2']
+    
+    name: PHP ${{ matrix.php-version }} Test
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: ${{ matrix.php-version }}
+        extensions: pdo, pdo_sqlite, sqlite3, json, curl
+        coverage: none
+        
+    - name: Check PHP version
+      run: php -v
+      
+    - name: Validate PHP syntax
+      run: |
+        echo "Checking PHP syntax..."
+        find . -name "*.php" -not -path "./vendor/*" -exec php -l {} \;
+        
+    - name: Check required extensions
+      run: |
+        php -m | grep -i pdo
+        php -m | grep -i sqlite
+        php -m | grep -i json
+        
+    - name: Create test database directory
+      run: |
+        mkdir -p data
+        chmod 755 data
+        
+    - name: Test database creation
+      run: |
+        php -r "
+        require_once 'includes/config.php';
+        require_once 'includes/db.php';
+        \$db = Database::getInstance();
+        echo 'Database connection: OK\n';
+        "
+        
+    - name: Validate .htaccess
+      run: |
+        if [ -f .htaccess ]; then
+          echo ".htaccess file exists"
+          cat .htaccess
+        fi
+        
+    - name: Check file permissions
+      run: |
+        ls -la
+        ls -la data/

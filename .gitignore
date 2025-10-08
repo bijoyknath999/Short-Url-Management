@@ -1,0 +1,37 @@
+# Environment files
+.env
+
+# Database
+data/*.db
+data/*.db-journal
+data/*.db-shm
+data/*.db-wal
+
+# Backups
+*.backup
+backups/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+error_log
+access_log
+
+# Temporary files
+tmp/
+temp/
+cache/
+
+# Composer (if used)
+vendor/
+composer.lock

@@ -1,0 +1,17 @@
+RewriteEngine On
+RewriteBase /Short-Url/
+
+# Redirect /s/code to index.php
+RewriteRule ^s/([a-zA-Z0-9_-]+)$ index.php?code=$1 [L,QSA]
+
+# Redirect /code to index.php
+RewriteRule ^([a-zA-Z0-9_-]+)$ index.php?code=$1 [L,QSA]
+
+# Prevent direct access to data directory
+RewriteRule ^data/ - [F,L]
+
+# Prevent access to .env files
+<Files ".env*">
+    Order allow,deny
+    Deny from all
+</Files>
