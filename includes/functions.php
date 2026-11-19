@@ -229,7 +229,8 @@ function getTotalClicksCount($code = null) {
  * Send Telegram notification
  */
 function sendTelegramNotification($message) {
-    if (empty(TELEGRAM_BOT_TOKEN) || empty(TELEGRAM_CHAT_ID)) {
+    if (empty(TELEGRAM_BOT_TOKEN) || empty(TELEGRAM_CHAT_ID) || 
+        TELEGRAM_BOT_TOKEN === 'your_bot_token_here' || TELEGRAM_CHAT_ID === 'your_chat_id_here') {
         return false;
     }
     
@@ -241,6 +242,23 @@ function sendTelegramNotification($message) {
         'parse_mode' => 'HTML'
     ];
     
+    // Use cURL if available (recommended for reliability, cPanel, and SSL support)
+    if (function_exists('curl_init') && extension_loaded('curl')) {
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+        $result = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        
+        return ($result !== false && $httpCode >= 200 && $httpCode < 300);
+    }
+    
+    // Fallback to stream context / file_get_contents if curl is not installed
     $options = [
         'http' => [
             'header'  => "Content-type: application/x-www-form-urlencoded\r\n",

@@ -46,22 +46,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'parse_mode' => 'HTML'
             ];
             
-            $options = [
-                'http' => [
-                    'header'  => "Content-type: application/x-www-form-urlencoded\r\n",
-                    'method'  => 'POST',
-                    'content' => http_build_query($data),
-                    'timeout' => 5
-                ]
-            ];
+            $sent = false;
+            $failReason = '';
             
-            $context = stream_context_create($options);
-            $result = @file_get_contents($url, false, $context);
+            if (function_exists('curl_init') && extension_loaded('curl')) {
+                $ch = curl_init();
+                curl_setopt($ch, CURLOPT_URL, $url);
+                curl_setopt($ch, CURLOPT_POST, true);
+                curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+                $res = curl_exec($ch);
+                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                $curlErr = curl_error($ch);
+                curl_close($ch);
+                
+                if ($res !== false && $httpCode >= 200 && $httpCode < 300) {
+                    $sent = true;
+                } else {
+                    $failReason = $curlErr ? $curlErr : ('HTTP ' . $httpCode . ' response: ' . $res);
+                }
+            } else {
+                $options = [
+                    'http' => [
+                        'header'  => "Content-type: application/x-www-form-urlencoded\r\n",
+                        'method'  => 'POST',
+                        'content' => http_build_query($data),
+                        'timeout' => 5
+                    ]
+                ];
+                $context = stream_context_create($options);
+                $result = @file_get_contents($url, false, $context);
+                if ($result !== false) {
+                    $sent = true;
+                } else {
+                    $err = error_get_last();
+                    $failReason = $err['message'] ?? 'file_get_contents failed. Ensure allow_url_fopen is enabled or install PHP curl extension.';
+                }
+            }
             
-            if ($result) {
+            if ($sent) {
                 $success .= ' Test notification sent to Telegram!';
             } else {
-                $error = 'Settings saved but failed to send test notification. Please check your Bot Token and Chat ID.';
+                $error = 'Settings saved but failed to send test notification: ' . htmlspecialchars($failReason);
             }
         }
     } else {
