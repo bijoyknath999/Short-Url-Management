@@ -10,6 +10,22 @@ require_once __DIR__ . '/includes/functions.php';
 // Get the code from URL
 $code = $_GET['code'] ?? '';
 
+// Fallback to REQUEST_URI for LiteSpeed / Nginx or environments where rewrite query string is stripped
+if (empty($code)) {
+    $requestUri = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
+    $path = trim($requestUri, '/');
+    if (!empty($path) && $path !== 'index.php') {
+        if (strpos($path, 's/') === 0) {
+            $path = substr($path, 2);
+        }
+        $parts = explode('/', $path);
+        $candidate = end($parts);
+        if ($candidate !== 'index.php' && $candidate !== 'admin' && $candidate !== 'api.php') {
+            $code = $candidate;
+        }
+    }
+}
+
 if (empty($code)) {
     // No code provided, redirect to admin or show 404
     header('Location: /admin/dashboard.php');

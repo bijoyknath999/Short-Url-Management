@@ -1,8 +1,12 @@
 RewriteEngine On
-RewriteBase /Short-Url/
+RewriteBase /
 
 # Redirect /s/code to index.php
 RewriteRule ^s/([a-zA-Z0-9_-]+)$ index.php?code=$1 [L,QSA]
+
+# Do not rewrite existing files or directories
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
 
 # Redirect /code to index.php
 RewriteRule ^([a-zA-Z0-9_-]+)$ index.php?code=$1 [L,QSA]
@@ -15,3 +19,12 @@ RewriteRule ^data/ - [F,L]
     Order allow,deny
     Deny from all
 </Files>
+
+# Prevent access to sensitive files
+<FilesMatch "\.(md|txt|log|sql|db|backup)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Disable directory listing
+Options -Indexes
