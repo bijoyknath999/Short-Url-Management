@@ -113,34 +113,27 @@ $db = getDB();
 $stmt = $db->prepare("SELECT COUNT(*) FROM clicks WHERE code = ? AND ip = ?");
 $stmt->execute([$code, $ip]);
 $alreadyClicked = $stmt->fetchColumn() > 0;
+$isUnique = !$alreadyClicked;
 
-// Track the click only if this IP hasn't clicked before
-if (!$alreadyClicked) {
-    trackClick($code, $url['target'], $ip, $userAgent, $referer);
-    
-    // Send Telegram notification (async, don't wait for response)
-    $telegramMessage = formatClickNotification($code, $url['target'], $ip, $userAgent);
-    sendTelegramNotification($telegramMessage);
-}
+// Track the click (records click log; increments unique count if new visitor)
+trackClick($code, $url['target'], $ip, $userAgent, $referer, $isUnique);
+
+// Always send Telegram notification on every visit
+$telegramMessage = formatClickNotification($code, $url['target'], $ip, $userAgent, $isUnique);
+sendTelegramNotification($telegramMessage);
 
 // Perform redirect
-$redirectType = (int)$url['redirect_type'];
+$redirectType = (int)($url['redirect_type'] ?? 302);
 if ($redirectType === 301) {
     header('HTTP/1.1 301 Moved Permanently');
 } else {
     header('HTTP/1.1 302 Found');
 }
 
-// Add cache control headers
-if ($redirectType === 301) {
-    // Cache permanent redirects
-    header('Cache-Control: public, max-age=31536000');
-} else {
-    // Don't cache temporary redirects
-    header('Cache-Control: no-cache, no-store, must-revalidate');
-    header('Pragma: no-cache');
-    header('Expires: 0');
-}
+// Never cache redirects so every visit hits the server and triggers notifications & analytics
+header('Cache-Control: no-cache, no-store, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: 0');
 
 header('Location: ' . $url['target']);
 exit;

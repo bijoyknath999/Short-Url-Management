@@ -163,24 +163,33 @@ function deleteShortUrl($id) {
 /**
  * Track click
  */
-function trackClick($code, $target, $ip, $userAgent, $referer = '') {
+function trackClick($code, $target, $ip, $userAgent, $referer = '', $isUnique = true) {
     $db = getDB();
     $now = date('Y-m-d H:i:s');
     
-    // Insert click record
+    // Always insert click record into clicks log
     $stmt = $db->prepare("
         INSERT INTO clicks (code, target, ip, user_agent, referer, created_at)
         VALUES (?, ?, ?, ?, ?, ?)
     ");
     $stmt->execute([$code, $target, $ip, $userAgent, $referer, $now]);
     
-    // Update short URL clicks count and last click time
-    $stmt = $db->prepare("
-        UPDATE short_urls 
-        SET clicks = clicks + 1, last_click_at = ?
-        WHERE code = ?
-    ");
-    $stmt->execute([$now, $code]);
+    // Update short URL: increment unique visitors if new, always update last_click_at
+    if ($isUnique) {
+        $stmt = $db->prepare("
+            UPDATE short_urls 
+            SET clicks = clicks + 1, last_click_at = ?
+            WHERE code = ?
+        ");
+        $stmt->execute([$now, $code]);
+    } else {
+        $stmt = $db->prepare("
+            UPDATE short_urls 
+            SET last_click_at = ?
+            WHERE code = ?
+        ");
+        $stmt->execute([$now, $code]);
+    }
 }
 
 /**
@@ -315,14 +324,14 @@ function sendTelegramNotification($message, $customToken = null, $customChatId =
 /**
  * Format click notification for Telegram
  */
-function formatClickNotification($code, $target, $ip, $userAgent) {
+function formatClickNotification($code, $target, $ip, $userAgent, $isUnique = true) {
     $timestamp = date('Y-m-d H:i:s');
-    $shortUrl = BASE_URL . '/' . $code;
+    $statusText = $isUnique ? '🆕 New Visitor' : '🔄 Repeat Visit';
     
     // Escape user agent for HTML but keep full length
     $escapedUA = htmlspecialchars($userAgent);
     
-    return "🔗 <b>Short redirect:</b> {$code}\n" .
+    return "🔗 <b>Short redirect:</b> {$code} ({$statusText})\n" .
            "→ {$target}\n\n" .
            "📍 <b>IP:</b> <code>{$ip}</code>\n" .
            "🖥 <b>UA:</b> <code>{$escapedUA}</code>\n" .
