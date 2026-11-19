@@ -12,88 +12,66 @@ $success = '';
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_POST['action'] ?? 'save';
     $botToken = trim($_POST['bot_token'] ?? '');
     $chatId = trim($_POST['chat_id'] ?? '');
     
-    // Read current .env file
-    $envPath = __DIR__ . '/../.env';
-    if (!file_exists($envPath)) {
-        $envPath = __DIR__ . '/../.env.example';
-    }
-    
-    $envContent = file_get_contents($envPath);
-    
-    // Update Telegram settings
-    $envContent = preg_replace('/TELEGRAM_BOT_TOKEN=.*/', 'TELEGRAM_BOT_TOKEN=' . $botToken, $envContent);
-    $envContent = preg_replace('/TELEGRAM_CHAT_ID=.*/', 'TELEGRAM_CHAT_ID=' . $chatId, $envContent);
-    
-    // Save to .env
-    $envPath = __DIR__ . '/../.env';
-    if (file_put_contents($envPath, $envContent)) {
-        $success = 'Telegram settings saved successfully! Reload the page to apply changes.';
+    if ($action === 'test') {
+        // Test notification using form input, or fallback to configured constants
+        $testToken = !empty($botToken) ? $botToken : TELEGRAM_BOT_TOKEN;
+        $testChatId = !empty($chatId) ? $chatId : TELEGRAM_CHAT_ID;
         
-        // Test notification if both values provided
-        if (!empty($botToken) && !empty($chatId)) {
-            $testMessage = "🎉 <b>Telegram Integration Active!</b>\n\n" .
-                          "Your Short URL system is now connected to Telegram.\n" .
-                          "You'll receive notifications here for every redirect.\n\n" .
+        if (empty($testToken) || empty($testChatId) || 
+            $testToken === 'your_bot_token_here' || $testChatId === 'your_chat_id_here') {
+            $error = 'Please enter both Telegram Bot Token and Chat ID to test notifications.';
+        } else {
+            $testMessage = "🧪 <b>Telegram Test Notification</b>\n\n" .
+                          "Your Short URL system is successfully connected to Telegram!\n" .
+                          "You will receive click notifications here.\n\n" .
                           "⏰ <b>Time:</b> " . date('Y-m-d H:i:s');
             
-            $url = "https://api.telegram.org/bot" . $botToken . "/sendMessage";
-            $data = [
-                'chat_id' => $chatId,
-                'text' => $testMessage,
-                'parse_mode' => 'HTML'
-            ];
-            
-            $sent = false;
-            $failReason = '';
-            
-            if (function_exists('curl_init') && extension_loaded('curl')) {
-                $ch = curl_init();
-                curl_setopt($ch, CURLOPT_URL, $url);
-                curl_setopt($ch, CURLOPT_POST, true);
-                curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
-                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                curl_setopt($ch, CURLOPT_TIMEOUT, 5);
-                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-                $res = curl_exec($ch);
-                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                $curlErr = curl_error($ch);
-                curl_close($ch);
-                
-                if ($res !== false && $httpCode >= 200 && $httpCode < 300) {
-                    $sent = true;
-                } else {
-                    $failReason = $curlErr ? $curlErr : ('HTTP ' . $httpCode . ' response: ' . $res);
-                }
+            $errorMsg = '';
+            if (sendTelegramNotification($testMessage, $testToken, $testChatId, $errorMsg)) {
+                $success = '🎉 Test notification sent successfully! Check your Telegram chat.';
             } else {
-                $options = [
-                    'http' => [
-                        'header'  => "Content-type: application/x-www-form-urlencoded\r\n",
-                        'method'  => 'POST',
-                        'content' => http_build_query($data),
-                        'timeout' => 5
-                    ]
-                ];
-                $context = stream_context_create($options);
-                $result = @file_get_contents($url, false, $context);
-                if ($result !== false) {
-                    $sent = true;
-                } else {
-                    $err = error_get_last();
-                    $failReason = $err['message'] ?? 'file_get_contents failed. Ensure allow_url_fopen is enabled or install PHP curl extension.';
-                }
-            }
-            
-            if ($sent) {
-                $success .= ' Test notification sent to Telegram!';
-            } else {
-                $error = 'Settings saved but failed to send test notification: ' . htmlspecialchars($failReason);
+                $error = 'Failed to send test notification: ' . htmlspecialchars($errorMsg);
             }
         }
     } else {
-        $error = 'Failed to save settings. Please check file permissions.';
+        // Read current .env file
+        $envPath = __DIR__ . '/../.env';
+        if (!file_exists($envPath)) {
+            $envPath = __DIR__ . '/../.env.example';
+        }
+        
+        $envContent = file_get_contents($envPath);
+        
+        // Update Telegram settings
+        $envContent = preg_replace('/TELEGRAM_BOT_TOKEN=.*/', 'TELEGRAM_BOT_TOKEN=' . $botToken, $envContent);
+        $envContent = preg_replace('/TELEGRAM_CHAT_ID=.*/', 'TELEGRAM_CHAT_ID=' . $chatId, $envContent);
+        
+        // Save to .env
+        $envPath = __DIR__ . '/../.env';
+        if (file_put_contents($envPath, $envContent)) {
+            $success = 'Telegram settings saved successfully! Reload the page to apply changes.';
+            
+            // Test notification if both values provided
+            if (!empty($botToken) && !empty($chatId)) {
+                $testMessage = "🎉 <b>Telegram Integration Active!</b>\n\n" .
+                              "Your Short URL system is now connected to Telegram.\n" .
+                              "You'll receive notifications here for every redirect.\n\n" .
+                              "⏰ <b>Time:</b> " . date('Y-m-d H:i:s');
+                
+                $errorMsg = '';
+                if (sendTelegramNotification($testMessage, $botToken, $chatId, $errorMsg)) {
+                    $success .= ' Test notification sent to Telegram!';
+                } else {
+                    $error = 'Settings saved but failed to send test notification: ' . htmlspecialchars($errorMsg);
+                }
+            }
+        } else {
+            $error = 'Failed to save settings. Please check file permissions on .env (set chmod 666 or 644).';
+        }
     }
 }
 
@@ -175,9 +153,12 @@ $currentChatId = TELEGRAM_CHAT_ID;
                     </div>
                 </div>
                 
-                <div class="form-actions">
-                    <button type="submit" class="btn btn-primary">
+                <div class="form-actions" style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                    <button type="submit" name="action" value="save" class="btn btn-primary">
                         💾 Save Telegram Settings
+                    </button>
+                    <button type="submit" name="action" value="test" class="btn btn-success">
+                        🧪 Test Telegram Notification
                     </button>
                     <a href="dashboard.php" class="btn btn-secondary">
                         Cancel
@@ -185,11 +166,11 @@ $currentChatId = TELEGRAM_CHAT_ID;
                 </div>
             </form>
             
-            <div style="margin-top: 2rem; padding: 1rem; background: #f9fafb; border-radius: 8px;">
-                <h3>📊 Current Status</h3>
-                <p><strong>Bot Token:</strong> <?php echo empty($currentBotToken) ? '❌ Not configured' : '✅ Configured'; ?></p>
-                <p><strong>Chat ID:</strong> <?php echo empty($currentChatId) ? '❌ Not configured' : '✅ Configured'; ?></p>
-                <p><strong>Notifications:</strong> <?php echo (empty($currentBotToken) || empty($currentChatId)) ? '❌ Disabled' : '✅ Active'; ?></p>
+            <div style="margin-top: 2rem; padding: 1.25rem; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
+                <h3 style="margin-bottom: 0.75rem;">📊 Current Status</h3>
+                <p><strong>Bot Token:</strong> <?php echo (empty($currentBotToken) || $currentBotToken === 'your_bot_token_here') ? '❌ Not configured' : '✅ Configured'; ?></p>
+                <p><strong>Chat ID:</strong> <?php echo (empty($currentChatId) || $currentChatId === 'your_chat_id_here') ? '❌ Not configured' : '✅ Configured'; ?></p>
+                <p><strong>Notifications:</strong> <?php echo (empty($currentBotToken) || empty($currentChatId) || $currentBotToken === 'your_bot_token_here') ? '❌ Disabled' : '✅ Active'; ?></p>
             </div>
         </div>
     </div>

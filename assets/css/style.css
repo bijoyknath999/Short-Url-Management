@@ -349,6 +349,18 @@ body {
     background: var(--light-color);
 }
 
+.btn-success {
+    background: var(--success-color, #10b981);
+    color: white;
+    border: none;
+}
+
+.btn-success:hover {
+    background: #059669;
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+}
+
 .btn-danger {
     background: var(--danger-color);
     color: white;

@@ -227,17 +227,27 @@ function getTotalClicksCount($code = null) {
 
 /**
  * Send Telegram notification
+ * 
+ * @param string $message HTML formatted message to send
+ * @param string|null $customToken Optional override for bot token (defaults to TELEGRAM_BOT_TOKEN)
+ * @param string|null $customChatId Optional override for chat ID (defaults to TELEGRAM_CHAT_ID)
+ * @param string|null &$errorMsg Output parameter for failure reason
+ * @return bool True on success, false on failure
  */
-function sendTelegramNotification($message) {
-    if (empty(TELEGRAM_BOT_TOKEN) || empty(TELEGRAM_CHAT_ID) || 
-        TELEGRAM_BOT_TOKEN === 'your_bot_token_here' || TELEGRAM_CHAT_ID === 'your_chat_id_here') {
+function sendTelegramNotification($message, $customToken = null, $customChatId = null, &$errorMsg = null) {
+    $botToken = $customToken ?: TELEGRAM_BOT_TOKEN;
+    $chatId = $customChatId ?: TELEGRAM_CHAT_ID;
+
+    if (empty($botToken) || empty($chatId) || 
+        $botToken === 'your_bot_token_here' || $chatId === 'your_chat_id_here') {
+        $errorMsg = 'Bot Token or Chat ID is missing or set to placeholder.';
         return false;
     }
     
-    $url = "https://api.telegram.org/bot" . TELEGRAM_BOT_TOKEN . "/sendMessage";
+    $url = "https://api.telegram.org/bot" . $botToken . "/sendMessage";
     
     $data = [
-        'chat_id' => TELEGRAM_CHAT_ID,
+        'chat_id' => $chatId,
         'text' => $message,
         'parse_mode' => 'HTML'
     ];
@@ -249,13 +259,26 @@ function sendTelegramNotification($message) {
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 8);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
         $result = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr = curl_error($ch);
         curl_close($ch);
         
-        return ($result !== false && $httpCode >= 200 && $httpCode < 300);
+        if ($result !== false && $httpCode >= 200 && $httpCode < 300) {
+            return true;
+        }
+
+        $decoded = json_decode($result, true);
+        if (!empty($decoded['description'])) {
+            $errorMsg = "Telegram API error ({$httpCode}): " . $decoded['description'];
+        } elseif ($curlErr) {
+            $errorMsg = "cURL error: " . $curlErr;
+        } else {
+            $errorMsg = "HTTP error {$httpCode}: " . substr($result, 0, 200);
+        }
+        return false;
     }
     
     // Fallback to stream context / file_get_contents if curl is not installed
@@ -264,14 +287,29 @@ function sendTelegramNotification($message) {
             'header'  => "Content-type: application/x-www-form-urlencoded\r\n",
             'method'  => 'POST',
             'content' => http_build_query($data),
-            'timeout' => 5
+            'timeout' => 8,
+            'ignore_errors' => true
         ]
     ];
     
     $context = stream_context_create($options);
     $result = @file_get_contents($url, false, $context);
     
-    return $result !== false;
+    if ($result !== false) {
+        $decoded = json_decode($result, true);
+        if (isset($decoded['ok']) && $decoded['ok'] === true) {
+            return true;
+        }
+        if (!empty($decoded['description'])) {
+            $errorMsg = "Telegram error: " . $decoded['description'];
+            return false;
+        }
+        return true;
+    }
+
+    $lastErr = error_get_last();
+    $errorMsg = $lastErr['message'] ?? 'Connection failed. Please verify network access and PHP configuration.';
+    return false;
 }
 
 /**
