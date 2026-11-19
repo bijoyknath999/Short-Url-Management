@@ -103,10 +103,11 @@ if (!$url) {
     exit;
 }
 
-// Get client information
+// Get client information and country location
 $ip = getClientIP();
 $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? 'Unknown';
 $referer = $_SERVER['HTTP_REFERER'] ?? '';
+$location = getIPLocation($ip);
 
 // Check if this IP already clicked this URL
 $db = getDB();
@@ -118,8 +119,8 @@ $isUnique = !$alreadyClicked;
 // Track the click (records click log; increments unique count if new visitor)
 trackClick($code, $url['target'], $ip, $userAgent, $referer, $isUnique);
 
-// Always send Telegram notification on every visit
-$telegramMessage = formatClickNotification($code, $url['target'], $ip, $userAgent, $isUnique);
+// Always send Telegram notification on every visit with country details
+$telegramMessage = formatClickNotification($code, $url['target'], $ip, $userAgent, $isUnique, $location);
 sendTelegramNotification($telegramMessage);
 
 // Perform redirect

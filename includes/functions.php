@@ -322,11 +322,128 @@ function sendTelegramNotification($message, $customToken = null, $customChatId =
 }
 
 /**
+ * Convert ISO 3166-1 alpha-2 country code to emoji flag
+ */
+function countryCodeToFlag($countryCode) {
+    if (empty($countryCode) || strlen($countryCode) !== 2) {
+        return '🌍';
+    }
+    $countryCode = strtoupper($countryCode);
+    if (!ctype_alpha($countryCode)) {
+        return '🌍';
+    }
+    $firstChar = ord($countryCode[0]) - ord('A') + 0x1F1E6;
+    $secondChar = ord($countryCode[1]) - ord('A') + 0x1F1E6;
+    if (function_exists('mb_chr')) {
+        return mb_chr($firstChar, 'UTF-8') . mb_chr($secondChar, 'UTF-8');
+    }
+    return '🌍';
+}
+
+/**
+ * Get country and location details from IP address
+ */
+function getIPLocation($ip) {
+    // Check for local or private IP
+    if ($ip === '127.0.0.1' || $ip === '::1' || !filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+        return [
+            'country' => 'Local / Private IP',
+            'country_code' => '',
+            'city' => '',
+            'flag' => '🏠'
+        ];
+    }
+    
+    // Check Cloudflare header first if available
+    $cfCountry = $_SERVER['HTTP_CF_IPCOUNTRY'] ?? '';
+    
+    // Query ip-api.com (free, fast, no API key required)
+    $url = "http://ip-api.com/json/" . urlencode($ip) . "?fields=status,country,countryCode,city";
+    $location = null;
+    
+    if (function_exists('curl_init') && extension_loaded('curl')) {
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 2);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 1);
+        $res = curl_exec($ch);
+        curl_close($ch);
+        if ($res) {
+            $data = json_decode($res, true);
+            if (!empty($data) && ($data['status'] ?? '') === 'success') {
+                $location = $data;
+            }
+        }
+    } else {
+        $ctx = stream_context_create([
+            'http' => ['timeout' => 2]
+        ]);
+        $res = @file_get_contents($url, false, $ctx);
+        if ($res) {
+            $data = json_decode($res, true);
+            if (!empty($data) && ($data['status'] ?? '') === 'success') {
+                $location = $data;
+            }
+        }
+    }
+    
+    if ($location) {
+        $country = $location['country'] ?? 'Unknown';
+        $countryCode = $location['countryCode'] ?? '';
+        $city = $location['city'] ?? '';
+        $flag = countryCodeToFlag($countryCode);
+        return [
+            'country' => $country,
+            'country_code' => $countryCode,
+            'city' => $city,
+            'flag' => $flag
+        ];
+    }
+    
+    if (!empty($cfCountry) && strlen($cfCountry) === 2 && $cfCountry !== 'XX') {
+        return [
+            'country' => $cfCountry,
+            'country_code' => $cfCountry,
+            'city' => '',
+            'flag' => countryCodeToFlag($cfCountry)
+        ];
+    }
+    
+    return [
+        'country' => 'Unknown',
+        'country_code' => '',
+        'city' => '',
+        'flag' => '🌍'
+    ];
+}
+
+/**
  * Format click notification for Telegram
  */
-function formatClickNotification($code, $target, $ip, $userAgent, $isUnique = true) {
+function formatClickNotification($code, $target, $ip, $userAgent, $isUnique = true, $location = null) {
     $timestamp = date('Y-m-d H:i:s');
     $statusText = $isUnique ? '🆕 New Visitor' : '🔄 Repeat Visit';
+    
+    // Format location details if available
+    $locationLine = '';
+    if (!empty($location) && is_array($location)) {
+        $flag = $location['flag'] ?? '🌍';
+        $country = $location['country'] ?? '';
+        $city = $location['city'] ?? '';
+        
+        $locationParts = [];
+        if (!empty($country)) {
+            $locationParts[] = $country;
+        }
+        if (!empty($city)) {
+            $locationParts[] = $city;
+        }
+        
+        if (!empty($locationParts)) {
+            $locationText = implode(', ', $locationParts);
+            $locationLine = "🌍 <b>Location:</b> {$flag} {$locationText}\n";
+        }
+    }
     
     // Escape user agent for HTML but keep full length
     $escapedUA = htmlspecialchars($userAgent);
@@ -334,6 +451,7 @@ function formatClickNotification($code, $target, $ip, $userAgent, $isUnique = tr
     return "🔗 <b>Short redirect:</b> {$code} ({$statusText})\n" .
            "→ {$target}\n\n" .
            "📍 <b>IP:</b> <code>{$ip}</code>\n" .
+           $locationLine .
            "🖥 <b>UA:</b> <code>{$escapedUA}</code>\n" .
            "⏰ <b>Time:</b> {$timestamp}";
 }
